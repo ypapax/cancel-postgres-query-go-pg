@@ -121,15 +121,29 @@ func Prepare(logLevel logrus.Level) {
 
 func server(){
 	e := echo.New()
-	e.GET("/hello", handler)
+	e.GET("/hello", handlerWithContext)
+	e.GET("/no", handlerNoContext)
 	logrus.Tracef("listening %+v", port)
 	e.Logger.Fatal(e.Start(":" + port))
 
 }
 
-func handler(c echo.Context) error {
-	logrus.Tracef("hello handler started")
+func handlerWithContext(c echo.Context) error {
+	logrus.Tracef("hello handlerWithContext started")
 	count, err := queryContext(c.Request().Context(), db)
+	if err != nil {
+		logrus.Errorf("%+v", err)
+	}
+	if err := c.JSON(200, map[string]int{"count": count}); err != nil {
+		logrus.Errorf("error: %+v", err)
+		return err
+	}
+	return nil
+}
+
+func handlerNoContext(c echo.Context) error {
+	logrus.Tracef("hello handlerWithContext started")
+	count, err := queryContext(context.Background(), db)
 	if err != nil {
 		logrus.Errorf("%+v", err)
 	}
