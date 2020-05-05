@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -26,7 +27,15 @@ func main()  {
 	type Filing struct {
 	}
 	var c []Filing
-	count, err := db.Model(&c).Count()
+	cont, cancel := context.WithCancel(context.Background())
+	go func() {
+		sl := 17 * time.Second
+		logrus.Infof("waiting for %s before canceling", sl)
+		time.Sleep(sl)
+		logrus.Infof("canceling")
+		cancel()
+	}()
+	count, err := db.ModelContext(cont, &c).Count()
 	if err != nil {
 		logrus.Fatalf("%+v", err)
 	}
