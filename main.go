@@ -2,15 +2,19 @@ package main
 
 import (
 	"context"
+	"github.com/labstack/echo"
 	"os"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/go-pg/pg"
 	_ "github.com/lib/pq" // postgres driver
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
+const port = "8001"
+
+var db *pg.DB
 
 func main()  {
 	Prepare(logrus.TraceLevel)
@@ -19,14 +23,15 @@ func main()  {
 	if len(connectionString) == 0 {
 		logrus.Fatalf("missing env var '%+v'", connStrEnv)
 	}
-	db, err := ConnectToPostgresTimeout(connectionString, 5 * time.Second, time.Second)
+	var err error
+	db, err = ConnectToPostgresTimeout(connectionString, 5 * time.Second, time.Second)
 	if err != nil {
 		logrus.Fatalf("%+v", err)
 	}
 	logrus.Infof("connected to db")
-	type Filing struct {
-	}
-	var c []Filing
+
+	go server()
+
 	cont, cancel := context.WithCancel(context.Background())
 	go func() {
 		sl := 17 * time.Second
@@ -35,11 +40,25 @@ func main()  {
 		logrus.Infof("canceling")
 		cancel()
 	}()
+	c, err := queryContext(cont, db)
+	if err != nil {
+		logrus.Errorf("%+v", err)
+	}
+	logrus.Infof("count: %+v", c)
+	select {
+	}
+}
+type Filing struct {
+}
+
+func queryContext(cont context.Context, db *pg.DB) (int, error) {
+	var c []Filing
 	count, err := db.ModelContext(cont, &c).Count()
 	if err != nil {
-		logrus.Fatalf("%+v", err)
+		return 0, errors.WithStack(err)
 	}
 	logrus.Infof("request is done: %+v", count)
+	return count, nil
 }
 
 // ConnectToPostgres connects to postgres instance
@@ -98,4 +117,25 @@ func Prepare(logLevel logrus.Level) {
 	logrus.SetFormatter(&customFormatter)
 	logrus.SetReportCaller(true)
 	logrus.SetLevel(logLevel)
+}
+
+func server(){
+	e := echo.New()
+	e.GET("/hello", handler)
+	logrus.Tracef("listening %+v", port)
+	e.Logger.Fatal(e.Start(":" + port))
+
+}
+
+func handler(c echo.Context) error {
+	logrus.Tracef("hello handler started")
+	count, err := queryContext(c.Request().Context(), db)
+	if err != nil {
+		logrus.Errorf("%+v", err)
+	}
+	if err := c.JSON(200, map[string]int{"count": count}); err != nil {
+		logrus.Errorf("error: %+v", err)
+		return err
+	}
+	return nil
 }
